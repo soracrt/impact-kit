@@ -89,16 +89,45 @@ function ik_writeInstalledVersion(jsonStr) {
   }
 }
 
+// Decode a base64 string into a raw byte-string (each char code 0-255 is one
+// decoded byte). ExtendScript has no built-in atob, and passing file content
+// with non-ASCII characters (em dashes, box-drawing glyphs, etc.) straight
+// through evalScript's string transport is a known fragile spot — the panel
+// side base64-encodes before sending, this reverses it.
+function ik_base64Decode(input) {
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var output = "";
+  var i = 0;
+  while (i < input.length) {
+    var c1 = input.charAt(i++);
+    var c2 = input.charAt(i++);
+    var c3 = input.charAt(i++);
+    var c4 = input.charAt(i++);
+
+    var e1 = chars.indexOf(c1);
+    var e2 = chars.indexOf(c2);
+    var e3 = (c3 === "=" || c3 === "") ? -1 : chars.indexOf(c3);
+    var e4 = (c4 === "=" || c4 === "") ? -1 : chars.indexOf(c4);
+
+    output += String.fromCharCode((e1 << 2) | (e2 >> 4));
+    if (e3 !== -1) output += String.fromCharCode(((e2 & 15) << 4) | (e3 >> 2));
+    if (e4 !== -1) output += String.fromCharCode(((e3 & 3) << 6) | e4);
+  }
+  return output;
+}
+
 // Overwrite a single file inside this extension's own installed folder.
-// relPath uses forward slashes, e.g. "js/main.js". Used by the in-panel
+// relPath uses forward slashes, e.g. "js/main.js". base64Content is the
+// file's UTF-8 bytes, base64-encoded on the JS side. Used by the in-panel
 // updater to pull fresh files down from GitHub without a manual reinstall.
-function ik_writeInstalledFile(relPath, content) {
+function ik_writeInstalledFile(relPath, base64Content) {
   try {
+    var bytes = ik_base64Decode(base64Content);
     var target = new File(ik_extensionRoot() + "/" + relPath);
     if (!target.parent.exists) target.parent.create();
-    target.encoding = "UTF-8";
+    target.encoding = "BINARY";
     target.open("w");
-    target.write(content);
+    target.write(bytes);
     target.close();
     return ok(relPath);
   } catch (e) {

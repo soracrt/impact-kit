@@ -26,14 +26,32 @@ function parseEnvelope(result) {
   }
 }
 
+// evalScript's callback fires with whatever string the JSX side returned —
+// including error envelopes — so a plain resolve() would treat host-side
+// failures as success. This rejects on {error: ...} so Promise chains
+// actually stop and surface the real reason instead of sailing through.
+function evalScriptChecked(script) {
+  return evalScriptAsync(script).then(function (result) {
+    var envelope = parseEnvelope(result);
+    if (envelope.error) throw new Error(envelope.error);
+    return envelope;
+  });
+}
+
+// btoa() only handles Latin1 — this round-trips through encodeURIComponent
+// so UTF-8 file content (em dashes, box-drawing glyphs, etc. in our own
+// source comments) survives evalScript's string transport intact.
+function utf8ToBase64(str) {
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
 function checkForUpdate() {
   fetch("https://api.github.com/repos/" + UPDATE_REPO + "/commits/main")
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (!data || !data.sha) return;
       latestCommitSha = data.sha;
-      return evalScriptAsync("ik_readInstalledVersion()").then(function (result) {
-        var envelope = parseEnvelope(result);
+      return evalScriptChecked("ik_readInstalledVersion()").then(function (envelope) {
         var installed = null;
         try { installed = JSON.parse(envelope.message || "{}"); } catch (e) { installed = {}; }
         if (installed.commit !== latestCommitSha) {
@@ -56,21 +74,23 @@ function installUpdate() {
   var fetches = UPDATE_FILES.map(function (relPath) {
     var url = "https://raw.githubusercontent.com/" + UPDATE_REPO + "/" + sha + "/" + relPath;
     return fetch(url).then(function (res) {
-      if (!res.ok) throw new Error("Failed to fetch " + relPath);
+      if (!res.ok) throw new Error("Failed to fetch " + relPath + " (" + res.status + ")");
       return res.text();
     }).then(function (content) {
-      return evalScriptAsync(
-        "ik_writeInstalledFile(" + JSON.stringify(relPath) + "," + JSON.stringify(content) + ")"
+      return evalScriptChecked(
+        "ik_writeInstalledFile(" + JSON.stringify(relPath) + "," + JSON.stringify(utf8ToBase64(content)) + ")"
       );
+    }).catch(function (e) {
+      throw new Error(relPath + ": " + e.message);
     });
   });
 
   Promise.all(fetches)
     .then(function () {
-      return evalScriptAsync("ik_reloadHost()");
+      return evalScriptChecked("ik_reloadHost()");
     })
     .then(function () {
-      return evalScriptAsync(
+      return evalScriptChecked(
         "ik_writeInstalledVersion(" + JSON.stringify(JSON.stringify({ commit: sha, installedAt: new Date().toISOString() })) + ")"
       );
     })
