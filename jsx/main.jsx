@@ -187,6 +187,23 @@ function findAnimatedProp(layer, propMode) {
   return best;
 }
 
+// Find the time within [nullStart, nullEnd] where the null's own motion is
+// furthest from where it started — the shake's peak keyframe gets pinned
+// there, regardless of category, so the hit lands where the null actually
+// hits hardest instead of at an assumed start/middle/end.
+function findPeakTime(prop, nullStart, nullEnd, frameLen) {
+  var rest = prop.valueAtTime(nullStart, false);
+  var peakTime = nullStart, peakMag = -1;
+
+  var t = nullStart;
+  while (t <= nullEnd) {
+    var m = magnitude(prop.valueAtTime(t, false), rest);
+    if (m > peakMag) { peakMag = m; peakTime = t; }
+    t += frameLen;
+  }
+  return peakTime;
+}
+
 // ─── Effect / property lookup ───────────────────────────────────────────────
 
 // Find the S_DissolveShake effect on an effects group by name/matchName
@@ -301,15 +318,19 @@ function propDims(prop) {
 }
 
 // Rewrite a single envelope property's keyframes into the intensity curve
-// for the given category, spanning [nullStart, nullEnd]. Uses the property's
-// own key(1)/key(2) values (as set by the imported/default preset) as the
-// 0%/100% reference points.
-function ik_writeEnvelope(prop, category, nullStart, nullEnd, frameLen) {
+// for the given category, spanning [nullStart, nullEnd] with the peak pinned
+// at peakTime (wherever the null's own motion actually peaked). refFloor/
+// refPeak come from the property's own key(1)/key(2) values (as set by the
+// imported/default preset) — compared by magnitude, not position, since a
+// custom preset may author its "no shake" and "full shake" keyframes in
+// either order.
+function ik_writeEnvelope(prop, category, nullStart, nullEnd, frameLen, peakTime) {
   if (!prop || prop.numKeys < 2) return;
 
-  var peakIdx  = Math.min(2, prop.numKeys);
-  var refFloor = prop.keyValue(1);
-  var refPeak  = prop.keyValue(peakIdx);
+  var v1 = prop.keyValue(1);
+  var v2 = prop.keyValue(Math.min(2, prop.numKeys));
+  var refFloor = Math.min(v1, v2);
+  var refPeak  = Math.max(v1, v2);
   var dims     = propDims(prop);
 
   for (var k = prop.numKeys; k >= 1; k--) prop.removeKey(k);
@@ -321,28 +342,27 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, frameLen) {
     return;
   }
 
+  var centerT = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
   var points;
 
   if (category === "out") {
-    // Ease-out: leaves the peak almost immediately (low outgoing influence),
-    // then decelerates gently into the floor (high incoming influence) —
-    // a fast drop with a soft tail, not a symmetric S-curve.
+    // Sharp attack into the hit (low influence on both sides of the rise),
+    // soft decay out of it (high influence on both sides of the fall) — a
+    // fast snap to the peak with a gentle tail, not a symmetric S-curve.
     points = [
-      { t: nullStart, v: refPeak,  outI: 12, inI: 12 },
+      { t: nullStart, v: refFloor, outI: 12, inI: 12 },
+      { t: centerT,   v: refPeak,  outI: 88, inI: 12 },
       { t: nullEnd,   v: refFloor, outI: 88, inI: 88 }
     ];
   } else if (category === "in") {
-    // Ease-in: holds near the floor at first (high outgoing influence),
-    // then snaps up to the peak right at the end (low incoming influence) —
-    // the mirror of "out".
+    // Soft build into the hit, sharp cutoff out of it — the mirror of "out".
     points = [
       { t: nullStart, v: refFloor, outI: 75, inI: 75 },
-      { t: nullEnd,   v: refPeak,  outI: 9,  inI: 9  }
+      { t: centerT,   v: refPeak,  outI: 9,  inI: 75 },
+      { t: nullEnd,   v: refFloor, outI: 9,  inI: 9  }
     ];
   } else if (category === "mid") {
-    // Burst: floor at the null's start, peak at its midpoint, floor again
-    // at its end.
-    var centerT = clampNum(nullStart + (nullEnd - nullStart) / 2, nullStart + frameLen, nullEnd - frameLen);
+    // Even ease on both sides of the peak.
     points = [
       { t: nullStart, v: refFloor, outI: 30, inI: 30 },
       { t: centerT,   v: refPeak,  outI: 30, inI: 30 },
@@ -422,6 +442,8 @@ function ik_applyImpact(argsJson) {
       var nullEndTime   = animProp.keyTime(animProp.numKeys);
       if (nullStartTime >= nullEndTime) continue;
 
+      var peakTime = findPeakTime(animProp, nullStartTime, nullEndTime, frameLen);
+
       // Create adjustment layer above the null layer
       var adjLayer = comp.layers.addSolid(
         [0, 0, 0], "Impact - " + nullLayer.name,
@@ -447,7 +469,7 @@ function ik_applyImpact(argsJson) {
       var envelopeProps = findEnvelopeProps(effect);
       for (var ep = 0; ep < envelopeProps.length; ep++) {
         try {
-          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, frameLen);
+          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, frameLen, peakTime);
         } catch (eProp) {}
       }
 
