@@ -306,83 +306,94 @@ function forceWrapOff(effect) {
   setMenu("Wrap Y", 1);
 }
 
-// ─── Category-specific intensity curves ─────────────────────────────────────
+// ─── Envelope retiming ───────────────────────────────────────────────────────
 
-function easeArray(influence, dims) {
-  var out = [];
-  for (var i = 0; i < dims; i++) out.push(new KeyframeEase(0, influence));
-  return out;
+// How "loud" a keyframe value is, for picking which of the preset's own
+// keyframes is its "hit" — the one to anchor to the null's real peak.
+function valueMagnitude(v) {
+  if (v instanceof Array) {
+    var sum = 0;
+    for (var i = 0; i < v.length; i++) sum += v[i] * v[i];
+    return Math.sqrt(sum);
+  }
+  return Math.abs(v);
 }
 
-function propDims(prop) {
-  var v = prop.value;
-  return (v instanceof Array) ? v.length : 1;
-}
-
-// Rewrite a single envelope property's keyframes into the intensity curve
-// for the given category, spanning [nullStart, nullEnd] with the peak pinned
-// at peakTime (wherever the null's own motion actually peaked). refFloor/
-// refPeak come from the property's own key(1)/key(2) values (as set by the
-// imported/default preset) — compared by magnitude, not position, since a
-// custom preset may author its "no shake" and "full shake" keyframes in
-// either order.
-function ik_writeEnvelope(prop, category, nullStart, nullEnd, frameLen, peakTime) {
+// Retime the envelope property's OWN authored keyframes (values, eases,
+// interpolation — the curve the user built or the bundled default) onto the
+// null's timeline. Never resynthesizes the curve — only stretches keyframe
+// TIMES so the preset's own highest-magnitude keyframe (its "hit") lands
+// exactly at peakTime, with everything before/after it scaled to fill
+// [nullStart, peakTime] and [peakTime, nullEnd] respectively.
+function ik_writeEnvelope(prop, nullStart, nullEnd, frameLen, peakTime) {
   if (!prop || prop.numKeys < 2) return;
 
-  var v1 = prop.keyValue(1);
-  var v2 = prop.keyValue(Math.min(2, prop.numKeys));
-  var refFloor = Math.min(v1, v2);
-  var refPeak  = Math.max(v1, v2);
-  var dims     = propDims(prop);
+  var origKeys = [];
+  for (var i = 1; i <= prop.numKeys; i++) {
+    var rec = { time: prop.keyTime(i), value: prop.keyValue(i) };
+    try {
+      rec.inType  = prop.keyInInterpolationType(i);
+      rec.outType = prop.keyOutInterpolationType(i);
+    } catch (e1) {}
+    try {
+      rec.inEase  = prop.keyInTemporalEase(i);
+      rec.outEase = prop.keyOutTemporalEase(i);
+    } catch (e2) {}
+    origKeys.push(rec);
+  }
+
+  var peakIdx = 0;
+  for (var pi = 1; pi < origKeys.length; pi++) {
+    if (valueMagnitude(origKeys[pi].value) > valueMagnitude(origKeys[peakIdx].value)) peakIdx = pi;
+  }
+
+  var origStart = origKeys[0].time;
+  var origEnd   = origKeys[origKeys.length - 1].time;
+  var origPeak  = origKeys[peakIdx].time;
+  var newPeak   = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
+
+  function remapTime(t) {
+    if (origPeak <= origStart) {
+      // The preset's own peak IS its first keyframe (a decay-only shape) —
+      // stretch the whole thing to start at the null's real peak.
+      var span = origEnd - origStart;
+      var frac = span > 0 ? (t - origStart) / span : 0;
+      return newPeak + frac * (nullEnd - newPeak);
+    }
+    if (origPeak >= origEnd) {
+      // Mirror case: the preset's peak is its last keyframe (a build-only
+      // shape) — stretch it to end at the null's real peak.
+      var span2 = origEnd - origStart;
+      var frac2 = span2 > 0 ? (t - origStart) / span2 : 0;
+      return nullStart + frac2 * (newPeak - nullStart);
+    }
+    if (t <= origPeak) {
+      var spanA = origPeak - origStart;
+      var fracA = spanA > 0 ? (t - origStart) / spanA : 0;
+      return nullStart + fracA * (newPeak - nullStart);
+    }
+    var spanB = origEnd - origPeak;
+    var fracB = spanB > 0 ? (t - origPeak) / spanB : 0;
+    return newPeak + fracB * (nullEnd - newPeak);
+  }
 
   for (var k = prop.numKeys; k >= 1; k--) prop.removeKey(k);
 
-  if (category === "buildup") {
-    // Constant intensity — no ramp, just a held shake level for the
-    // duration of the null.
-    prop.setValue(refPeak);
-    return;
+  for (var wi = 0; wi < origKeys.length; wi++) {
+    prop.setValueAtTime(remapTime(origKeys[wi].time), origKeys[wi].value);
   }
-
-  var centerT = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
-  var points;
-
-  if (category === "out") {
-    // Sharp attack into the hit (low influence on both sides of the rise),
-    // soft decay out of it (high influence on both sides of the fall) — a
-    // fast snap to the peak with a gentle tail, not a symmetric S-curve.
-    points = [
-      { t: nullStart, v: refFloor, outI: 12, inI: 12 },
-      { t: centerT,   v: refPeak,  outI: 88, inI: 12 },
-      { t: nullEnd,   v: refFloor, outI: 88, inI: 88 }
-    ];
-  } else if (category === "in") {
-    // Soft build into the hit, sharp cutoff out of it — the mirror of "out".
-    points = [
-      { t: nullStart, v: refFloor, outI: 75, inI: 75 },
-      { t: centerT,   v: refPeak,  outI: 9,  inI: 75 },
-      { t: nullEnd,   v: refFloor, outI: 9,  inI: 9  }
-    ];
-  } else if (category === "mid") {
-    // Even ease on both sides of the peak.
-    points = [
-      { t: nullStart, v: refFloor, outI: 30, inI: 30 },
-      { t: centerT,   v: refPeak,  outI: 30, inI: 30 },
-      { t: nullEnd,   v: refFloor, outI: 30, inI: 30 }
-    ];
-  } else {
-    return;
-  }
-
-  for (var pi = 0; pi < points.length; pi++) {
-    prop.setValueAtTime(points[pi].t, points[pi].v);
-  }
-  for (var ki = 1; ki <= points.length; ki++) {
+  for (var ki = 1; ki <= origKeys.length; ki++) {
+    var src = origKeys[ki - 1];
     try {
-      prop.setInterpolationTypeAtKey(ki, KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
-      var pt = points[ki - 1];
-      prop.setTemporalEaseAtKey(ki, easeArray(pt.inI, dims), easeArray(pt.outI, dims));
-    } catch (e) {}
+      if (src.inType !== undefined && src.outType !== undefined) {
+        prop.setInterpolationTypeAtKey(ki, src.inType, src.outType);
+      }
+    } catch (e3) {}
+    try {
+      if (src.inEase && src.outEase) {
+        prop.setTemporalEaseAtKey(ki, src.inEase, src.outEase);
+      }
+    } catch (e4) {}
   }
 }
 
@@ -471,7 +482,7 @@ function ik_applyImpact(argsJson) {
       var envelopeProps = findEnvelopeProps(effect);
       for (var ep = 0; ep < envelopeProps.length; ep++) {
         try {
-          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, frameLen, peakTime);
+          ik_writeEnvelope(envelopeProps[ep], nullStartTime, nullEndTime, frameLen, peakTime);
         } catch (eProp) {}
       }
 
