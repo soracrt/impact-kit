@@ -350,7 +350,16 @@ function ik_writeEnvelope(prop, nullStart, nullEnd, frameLen, peakTime) {
   var origStart = origKeys[0].time;
   var origEnd   = origKeys[origKeys.length - 1].time;
   var origPeak  = origKeys[peakIdx].time;
-  var newPeak   = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
+
+  // Only reserve a frame's gap on whichever side actually has a competing
+  // bookend keyframe. A decay-only preset (peak = its own first key) writes
+  // no floor at nullStart, so the peak is free to land exactly there —
+  // matching the null's own first keyframe frame-for-frame instead of
+  // sitting a frame later than it needs to. Mirror for build-only presets.
+  var newPeakLo = nullStart, newPeakHi = nullEnd;
+  if (origPeak > origStart) newPeakLo = nullStart + frameLen;
+  if (origPeak < origEnd)   newPeakHi = nullEnd - frameLen;
+  var newPeak = clampNum(peakTime, newPeakLo, newPeakHi);
 
   function remapTime(t) {
     if (origPeak <= origStart) {
