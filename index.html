@@ -9,7 +9,7 @@
   <div class="view">
     <div class="header-row">
       <span class="title">Impact Kit</span>
-      <button id="categoryCog" class="header-cog" title="Import custom shake preset"></button>
+      <button id="categoryCog" class="header-cog" title="Manage shake presets"></button>
     </div>
 
     <div id="updateBanner" class="update-banner hidden">
@@ -36,6 +36,37 @@
     <div id="statusLine" class="status">
       <span class="status-dot"></span>
       <span id="statusText"></span>
+    </div>
+  </div>
+
+  <div id="presetModal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">Shake Presets</span>
+        <button id="modalClose" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-rows">
+        <div class="modal-row">
+          <span class="modal-row-label">Out</span>
+          <span class="modal-row-file" id="presetFile-out">Default</span>
+          <button class="modal-row-btn" data-category="out">Change</button>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">In</span>
+          <span class="modal-row-file" id="presetFile-in">Default</span>
+          <button class="modal-row-btn" data-category="in">Change</button>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Mid</span>
+          <span class="modal-row-file" id="presetFile-mid">Default</span>
+          <button class="modal-row-btn" data-category="mid">Change</button>
+        </div>
+        <div class="modal-row">
+          <span class="modal-row-label">Build-Up</span>
+          <span class="modal-row-file" id="presetFile-buildup">Default</span>
+          <button class="modal-row-btn" data-category="buildup">Change</button>
+        </div>
+      </div>
     </div>
   </div>
 

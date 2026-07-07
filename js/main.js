@@ -151,8 +151,35 @@ function renderCategoryGrid() {
 
 function renderCogState() {
   var cog = document.getElementById("categoryCog");
-  cog.classList.toggle("has-custom", !!store.customPresetPaths[store.activeCategory]);
-  cog.title = "Import custom shake preset for " + store.activeCategory.toUpperCase();
+  var hasAny = false;
+  for (var key in store.customPresetPaths) {
+    if (store.customPresetPaths[key]) { hasAny = true; break; }
+  }
+  cog.classList.toggle("has-custom", hasAny);
+}
+
+function fileBaseName(path) {
+  var parts = path.split(/[\\/]/);
+  return parts[parts.length - 1];
+}
+
+function renderModalRows() {
+  var categories = ["out", "in", "mid", "buildup"];
+  for (var i = 0; i < categories.length; i++) {
+    var category = categories[i];
+    var path = store.customPresetPaths[category];
+    var el = document.getElementById("presetFile-" + category);
+    el.textContent = path ? fileBaseName(path) : "Default";
+  }
+}
+
+function openPresetModal() {
+  renderModalRows();
+  document.getElementById("presetModal").classList.remove("hidden");
+}
+
+function closePresetModal() {
+  document.getElementById("presetModal").classList.add("hidden");
 }
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -174,40 +201,48 @@ for (var ci = 0; ci < categoryButtons.length; ci++) {
   categoryButtons[ci].addEventListener("click", function () {
     store.activeCategory = this.dataset.category;
     renderCategoryGrid();
-    renderCogState();
     setStatus("Ready to apply preset");
   });
 }
 
-document.getElementById("categoryCog").addEventListener("click", function () {
-  var category = store.activeCategory;
-  setStatus("Waiting for file selection…");
+document.getElementById("categoryCog").addEventListener("click", openPresetModal);
+document.getElementById("modalClose").addEventListener("click", closePresetModal);
+document.getElementById("presetModal").addEventListener("click", function (e) {
+  if (e.target.id === "presetModal") closePresetModal();
+});
 
-  csInterface.evalScript("ik_pickPresetFile()", function (result) {
-    var envelope;
-    try {
-      envelope = JSON.parse(result);
-    } catch (e) {
-      envelope = { error: "Unexpected response: " + result };
-    }
-    if (envelope.error) {
-      setStatus(envelope.error, true);
-      return;
-    }
-    var picked;
-    try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
-    if (!picked) {
-      setStatus("Ready to apply preset");
-      return;
-    }
+var modalRowButtons = document.querySelectorAll(".modal-row-btn");
+for (var mi = 0; mi < modalRowButtons.length; mi++) {
+  modalRowButtons[mi].addEventListener("click", function () {
+    var category = this.dataset.category;
+    var btn = this;
+    btn.disabled = true;
 
-    store.customPresetPaths[category] = picked;
-    ImpactKitPresets.saveStore(csInterface, store, function () {
-      renderCogState();
-      setStatus("Custom shake set for " + category + ".");
+    csInterface.evalScript("ik_pickPresetFile()", function (result) {
+      btn.disabled = false;
+      var envelope;
+      try {
+        envelope = JSON.parse(result);
+      } catch (e) {
+        envelope = { error: "Unexpected response: " + result };
+      }
+      if (envelope.error) {
+        setStatus(envelope.error, true);
+        return;
+      }
+      var picked;
+      try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
+      if (!picked) return;
+
+      store.customPresetPaths[category] = picked;
+      ImpactKitPresets.saveStore(csInterface, store, function () {
+        renderModalRows();
+        renderCogState();
+        setStatus("Custom shake set for " + category + ".");
+      });
     });
   });
-});
+}
 
 document.getElementById("btnApply").addEventListener("click", function () {
   var btn = this;
