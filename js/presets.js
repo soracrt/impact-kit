@@ -11,7 +11,6 @@ var CATEGORIES = [
 var SHARED_PARAM_DEFS = [
   { key: "amplitude", label: "Amplitude", min: 0, max: 200,   step: 1, default: 100 },
   { key: "frequency", label: "Frequency", min: 0, max: 200,   step: 1, default: 100 },
-  { key: "tilt",      label: "Tilt",      min: 0, max: 200,   step: 1, default: 100 },
   { key: "seed",      label: "Seed",      min: 0, max: 99999, step: 1, default: 12345 }
 ];
 
@@ -22,7 +21,7 @@ var CATEGORY_PARAM_DEFS = {
     { key: "centerPct",     label: "Burst Center", min: 0, max: 100, step: 1, default: 50 },
     { key: "burstWidthPct", label: "Burst Width",  min: 5, max: 100, step: 1, default: 25 }
   ],
-  buildup: [{ key: "smoothness", label: "Smoothness", min: 0, max: 100, step: 1, default: 70 }]
+  buildup: []
 };
 
 function paramDefsFor(category) {
@@ -40,20 +39,20 @@ function defaultStore() {
     activePresetByCategory: { out: "Hard Hit", in: "Snap In", mid: "Quick Burst", buildup: "Slow Build" },
     presets: {
       out: [
-        { name: "Hard Hit",  builtin: true, params: { amplitude: 130, frequency: 110, tilt: 100, seed: 12345, decaySharpness: 85 } },
-        { name: "Soft Fade", builtin: true, params: { amplitude: 80,  frequency: 90,  tilt: 60,  seed: 54321, decaySharpness: 40 } }
+        { name: "Hard Hit",  builtin: true, params: { amplitude: 130, frequency: 110, seed: 12345, decaySharpness: 85 } },
+        { name: "Soft Fade", builtin: true, params: { amplitude: 80,  frequency: 90,  seed: 54321, decaySharpness: 40 } }
       ],
       in: [
-        { name: "Snap In",   builtin: true, params: { amplitude: 120, frequency: 110, tilt: 90, seed: 24680, snapAmount: 90 } },
-        { name: "Quick Tap", builtin: true, params: { amplitude: 90,  frequency: 100, tilt: 70, seed: 11223, snapAmount: 70 } }
+        { name: "Snap In",   builtin: true, params: { amplitude: 120, frequency: 110, seed: 24680, snapAmount: 90 } },
+        { name: "Quick Tap", builtin: true, params: { amplitude: 90,  frequency: 100, seed: 11223, snapAmount: 70 } }
       ],
       mid: [
-        { name: "Quick Burst",  builtin: true, params: { amplitude: 140, frequency: 120, tilt: 100, seed: 99999, centerPct: 50, burstWidthPct: 30 } },
-        { name: "Punchy Pulse", builtin: true, params: { amplitude: 100, frequency: 100, tilt: 80,  seed: 33445, centerPct: 45, burstWidthPct: 20 } }
+        { name: "Quick Burst",  builtin: true, params: { amplitude: 140, frequency: 120, seed: 99999, centerPct: 50, burstWidthPct: 30 } },
+        { name: "Punchy Pulse", builtin: true, params: { amplitude: 100, frequency: 100, seed: 33445, centerPct: 45, burstWidthPct: 20 } }
       ],
       buildup: [
-        { name: "Slow Build",   builtin: true, params: { amplitude: 110, frequency: 90, tilt: 100, seed: 77889, smoothness: 80 } },
-        { name: "Gradual Rise", builtin: true, params: { amplitude: 90,  frequency: 80, tilt: 60,  seed: 66554, smoothness: 65 } }
+        { name: "Slow Build",   builtin: true, params: { amplitude: 110, frequency: 90, seed: 77889 } },
+        { name: "Gradual Rise", builtin: true, params: { amplitude: 90,  frequency: 80, seed: 66554 } }
       ]
     }
   };

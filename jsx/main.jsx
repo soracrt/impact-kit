@@ -145,26 +145,18 @@ function findPropByName(group, name) {
   return null;
 }
 
-// Find the shake-intensity envelope properties (X/Y/Z Shake) that the
+// Find the shake-intensity envelope property ("Amplitude") that the
 // per-category curve should be written onto. Falls back to a generic scan
-// for any keyframed property not on the blocklist, since the exact set of
-// baked-keyframed props inside DS1.ffx can vary.
+// for any keyframed property not on the blocklist, in case the real effect
+// exposes it under a different name.
 function findEnvelopeProps(effect) {
-  var names = ["X Shake", "Y Shake", "Z Shake"];
-  var found = [];
-  for (var i = 0; i < names.length; i++) {
-    var p = findPropByName(effect, names[i]);
-    if (p && p.numKeys >= 2) found.push(p);
-  }
-  if (found.length > 0) return found;
+  var p = findPropByName(effect, "Amplitude");
+  if (p && p.numKeys >= 2) return [p];
 
-  var blocklist = { "Frequency": true, "Tilt Shake": true, "Seed": true };
-  function isBlocked(name) {
-    if (blocklist[name]) return true;
-    if (/Wave Freq$/i.test(name)) return true;
-    if (/Rand Freq$/i.test(name)) return true;
-    return false;
-  }
+  var blocklist = {
+    "Dissolve Percent": true, "Dissolve Speed": true, "Frequency": true,
+    "Mo Blur Length": true, "Seed": true
+  };
   function scan(group, out) {
     if (!group || !group.numProperties) return;
     for (var i = 1; i <= group.numProperties; i++) {
@@ -177,7 +169,7 @@ function findEnvelopeProps(effect) {
       } catch (eg) { isGroup = false; }
       if (isGroup) { scan(prop, out); continue; }
       try {
-        if (prop.numKeys >= 2 && !isBlocked(prop.name)) out.push(prop);
+        if (prop.numKeys >= 2 && !blocklist[prop.name]) out.push(prop);
       } catch (e) {}
     }
   }
@@ -187,8 +179,10 @@ function findEnvelopeProps(effect) {
 }
 
 // Apply the shared shake params to the Sapphire effect's native properties.
-// amplitude/frequency/tilt are percentages (100 = baked default), seed is an
-// absolute integer. Returns {applied, skipped} counts.
+// amplitude/frequency are percentages (100 = baked default), seed is an
+// absolute integer. Wrap X/Y are always forced off — a reflected shake at
+// the frame edge reads as a glitch, not a camera hit. Returns
+// {applied, skipped} counts.
 function applyParams(effect, params) {
   var applied = 0, skipped = 0;
 
@@ -209,27 +203,23 @@ function applyParams(effect, params) {
     }
   }
 
+  function setMenu(propName, index) {
+    try {
+      var prop = findPropByName(effect, propName);
+      if (!prop) { skipped++; return; }
+      prop.setValue(index);
+      applied++;
+    } catch (e) {
+      skipped++;
+    }
+  }
+
   if (params.amplitude !== undefined && params.amplitude !== null) {
-    var kAmp = params.amplitude / 100;
-    setScaled("X Shake", kAmp);
-    setScaled("Y Shake", kAmp);
-    setScaled("Z Shake", kAmp);
+    setScaled("Amplitude", params.amplitude / 100);
   }
 
   if (params.frequency !== undefined && params.frequency !== null) {
-    var kFreq = params.frequency / 100;
-    setScaled("Frequency", kFreq);
-    setScaled("X Wave Freq", kFreq);
-    setScaled("Y Wave Freq", kFreq);
-    setScaled("Z Wave Freq", kFreq);
-    setScaled("X Rand Freq", kFreq);
-    setScaled("Y Rand Freq", kFreq);
-    setScaled("Z Rand Freq", kFreq);
-  }
-
-  if (params.tilt !== undefined && params.tilt !== null) {
-    var kTilt = params.tilt / 100;
-    setScaled("Tilt Shake", kTilt);
+    setScaled("Frequency", params.frequency / 100);
   }
 
   if (params.seed !== undefined && params.seed !== null) {
@@ -245,6 +235,9 @@ function applyParams(effect, params) {
       skipped++;
     }
   }
+
+  setMenu("Wrap X", 1);
+  setMenu("Wrap Y", 1);
 
   return { applied: applied, skipped: skipped };
 }
@@ -275,29 +268,36 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen) 
 
   for (var k = prop.numKeys; k >= 1; k--) prop.removeKey(k);
 
+  if (category === "buildup") {
+    // Constant intensity — no ramp, just a held shake level for the
+    // duration of the null.
+    prop.setValue(refPeak);
+    return;
+  }
+
   var points;
 
   if (category === "out") {
+    // Ease-out: leaves the peak almost immediately (low outgoing influence),
+    // then decelerates gently into the floor (high incoming influence) —
+    // a fast drop with a soft tail, not a symmetric S-curve.
     var decay    = (params.decaySharpness !== undefined) ? params.decaySharpness : 70;
-    var outInflu = clampNum(80 - decay * 0.7, 5, 80);
-    var inInflu  = clampNum(20 + decay * 0.7, 20, 92);
+    var outInflu = clampNum(30 - decay * 0.25, 2, 30);
+    var inInflu  = clampNum(60 + decay * 0.4, 60, 95);
     points = [
       { t: nullStart, v: refPeak,  outI: outInflu, inI: outInflu },
       { t: nullEnd,   v: refFloor, outI: inInflu,  inI: inInflu }
     ];
   } else if (category === "in") {
-    var snap  = (params.snapAmount !== undefined) ? params.snapAmount : 70;
-    var influ = clampNum(50 - snap * 0.4, 8, 50);
+    // Ease-in: holds near the floor at first (high outgoing influence),
+    // then snaps up to the peak right at the end (low incoming influence) —
+    // the mirror of "out".
+    var snap       = (params.snapAmount !== undefined) ? params.snapAmount : 70;
+    var startInflu = clampNum(40 + snap * 0.5, 40, 95);
+    var endInflu   = clampNum(30 - snap * 0.3, 2, 30);
     points = [
-      { t: nullStart, v: refFloor, outI: influ, inI: influ },
-      { t: nullEnd,   v: refPeak,  outI: influ, inI: influ }
-    ];
-  } else if (category === "buildup") {
-    var smooth  = (params.smoothness !== undefined) ? params.smoothness : 70;
-    var influB  = clampNum(40 + smooth * 0.5, 40, 95);
-    points = [
-      { t: nullStart, v: refFloor, outI: influB, inI: influB },
-      { t: nullEnd,   v: refPeak,  outI: influB, inI: influB }
+      { t: nullStart, v: refFloor, outI: startInflu, inI: startInflu },
+      { t: nullEnd,   v: refPeak,  outI: endInflu,   inI: endInflu }
     ];
   } else if (category === "mid") {
     var fullDur   = nullEnd - nullStart;
