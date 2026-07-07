@@ -87,9 +87,20 @@ function installUpdate() {
     });
   });
 
+  var hostReloaded = false;
+
   Promise.all(fetches)
     .then(function () {
-      return evalScriptChecked("ik_reloadHost(" + JSON.stringify(extPath + "/jsx/main.jsx") + ")");
+      // Best-effort: re-evaluating jsx/main.jsx from within a call that
+      // originated from that same script reliably throws "IOError: File or
+      // folder does not exist" in this AE/CEP build — a real ExtendScript
+      // limitation, not a path bug (the file writes above always succeed).
+      // Don't let its failure block the update; worst case the host script
+      // just needs the panel reopened to pick up the change.
+      return evalScriptAsync("ik_reloadHost(" + JSON.stringify(extPath + "/jsx/main.jsx") + ")")
+        .then(function (result) {
+          hostReloaded = !parseEnvelope(result).error;
+        });
     })
     .then(function () {
       return evalScriptChecked(
@@ -97,8 +108,10 @@ function installUpdate() {
       );
     })
     .then(function () {
-      text.textContent = "Updated — reloading…";
-      setTimeout(function () { window.location.reload(); }, 600);
+      text.textContent = hostReloaded
+        ? "Updated — reloading…"
+        : "Updated — reopen the panel to finish (host script needs a fresh session).";
+      setTimeout(function () { window.location.reload(); }, hostReloaded ? 600 : 2500);
     })
     .catch(function (e) {
       btn.disabled = false;
