@@ -187,6 +187,43 @@ function findAnimatedProp(layer, propMode) {
   return best;
 }
 
+// Analyze the null's own motion curve to classify it as out/in/mid/buildup
+// and locate exactly where its peak displacement occurs, so a graph-matched
+// shake can be pinned to the null's actual motion instead of a template.
+function analyzeNullGraph(prop, nullStart, nullEnd, frameLen) {
+  var rest = prop.valueAtTime(nullStart, false);
+  var peakTime = nullStart, peakMag = 0;
+  var sumMag = 0, sampleCount = 0;
+
+  var t = nullStart;
+  while (t <= nullEnd) {
+    var m = magnitude(prop.valueAtTime(t, false), rest);
+    if (m > peakMag) { peakMag = m; peakTime = t; }
+    sumMag += m;
+    sampleCount++;
+    t += frameLen;
+  }
+
+  var avgMag   = sampleCount ? sumMag / sampleCount : 0;
+  var duration = nullEnd - nullStart;
+  var peakPct  = duration > 0 ? (peakTime - nullStart) / duration : 0;
+
+  var category;
+  if (peakMag > 0 && avgMag / peakMag > 0.7) {
+    // Displacement stays close to its peak for most of the range — a
+    // sustained shake, not a single hit.
+    category = "buildup";
+  } else if (peakPct <= 0.2) {
+    category = "out";
+  } else if (peakPct >= 0.8) {
+    category = "in";
+  } else {
+    category = "mid";
+  }
+
+  return { category: category, peakTime: peakTime, peakMag: peakMag };
+}
+
 // ─── Effect / property lookup ───────────────────────────────────────────────
 
 // Find the S_DissolveShake effect on an effects group by name/matchName
@@ -351,7 +388,7 @@ function propDims(prop) {
 // Rewrite a single envelope property's keyframes into the intensity curve
 // for the given category, spanning [nullStart, nullEnd]. Uses the property's
 // own post-applyParams key(1)/key(2) values as the 0%/100% reference points.
-function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen) {
+function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen, peakTime) {
   if (!prop || prop.numKeys < 2) return;
 
   var peakIdx  = Math.min(2, prop.numKeys);
@@ -393,14 +430,24 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen) 
       { t: nullEnd,   v: refPeak,  outI: endInflu,   inI: endInflu }
     ];
   } else if (category === "mid") {
-    var fullDur   = nullEnd - nullStart;
-    var centerPct = (params.centerPct !== undefined) ? params.centerPct : 50;
-    var widthPct  = (params.burstWidthPct !== undefined) ? params.burstWidthPct : 25;
+    var centerT, burstStart, burstEnd;
 
-    var centerT = clampNum(nullStart + fullDur * (centerPct / 100), nullStart + frameLen, nullEnd - frameLen);
-    var half    = Math.max(frameLen, fullDur * (widthPct / 100) / 2);
-    var burstStart = clampNum(centerT - half, nullStart, centerT - frameLen);
-    var burstEnd   = clampNum(centerT + half, centerT + frameLen, nullEnd);
+    if (peakTime !== undefined && peakTime !== null) {
+      // Graph-matched: pin the peak to where the null's own motion actually
+      // peaked, spanning the null's full range rather than a cropped window.
+      centerT    = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
+      burstStart = nullStart;
+      burstEnd   = nullEnd;
+    } else {
+      var fullDur   = nullEnd - nullStart;
+      var centerPct = (params.centerPct !== undefined) ? params.centerPct : 50;
+      var widthPct  = (params.burstWidthPct !== undefined) ? params.burstWidthPct : 25;
+
+      centerT    = clampNum(nullStart + fullDur * (centerPct / 100), nullStart + frameLen, nullEnd - frameLen);
+      var half   = Math.max(frameLen, fullDur * (widthPct / 100) / 2);
+      burstStart = clampNum(centerT - half, nullStart, centerT - frameLen);
+      burstEnd   = clampNum(centerT + half, centerT + frameLen, nullEnd);
+    }
 
     points = [
       { t: burstStart, v: refFloor, outI: 30, inI: 30 },
@@ -423,6 +470,41 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen) 
   }
 }
 
+// Preview-only: analyze the first selected null's motion and report which
+// category it would auto-classify as, so the UI can suggest it before Apply.
+function ik_detectCategory() {
+  try {
+    var comp = app.project.activeItem;
+    if (!comp || !(comp instanceof CompItem)) {
+      return err("No active composition.");
+    }
+
+    var selected = comp.selectedLayers;
+    if (!selected || selected.length === 0) {
+      return err("Select at least one null layer.");
+    }
+
+    var nullLayer = null;
+    for (var i = 0; i < selected.length; i++) {
+      if (selected[i].nullLayer) { nullLayer = selected[i]; break; }
+    }
+    if (!nullLayer) return err("No null layers in selection.");
+
+    var animProp = findAnimatedProp(nullLayer, "auto");
+    if (!animProp) return err("Selected null has no keyframed motion (need ≥ 2 keyframes).");
+
+    var nullStart = animProp.keyTime(1);
+    var nullEnd   = animProp.keyTime(animProp.numKeys);
+    if (nullStart >= nullEnd) return err("Null's keyframes span zero time.");
+
+    var frameLen = 1 / comp.frameRate;
+    var analysis = analyzeNullGraph(animProp, nullStart, nullEnd, frameLen);
+    return ok(JSON.stringify({ category: analysis.category }));
+  } catch (e) {
+    return err("Error: " + e.toString());
+  }
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 function ik_applyImpact(argsJson) {
@@ -431,6 +513,7 @@ function ik_applyImpact(argsJson) {
     var category   = args.category;
     var presetPath = args.presetPath;
     var params     = args.params || {};
+    var matchGraph = !!args.matchGraph;
 
     var presetFile = new File(presetPath);
     if (!presetFile.exists) {
@@ -471,6 +554,11 @@ function ik_applyImpact(argsJson) {
       var nullEndTime   = animProp.keyTime(animProp.numKeys);
       if (nullStartTime >= nullEndTime) continue;
 
+      var peakTime = null;
+      if (matchGraph) {
+        peakTime = analyzeNullGraph(animProp, nullStartTime, nullEndTime, frameLen).peakTime;
+      }
+
       // Create adjustment layer above the null layer
       var adjLayer = comp.layers.addSolid(
         [0, 0, 0], "Impact - " + nullLayer.name,
@@ -496,7 +584,7 @@ function ik_applyImpact(argsJson) {
       var envelopeProps = findEnvelopeProps(effect);
       for (var ep = 0; ep < envelopeProps.length; ep++) {
         try {
-          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, params, frameLen);
+          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, params, frameLen, peakTime);
         } catch (eProp) {}
       }
 

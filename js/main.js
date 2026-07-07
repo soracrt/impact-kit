@@ -344,6 +344,33 @@ document.getElementById("btnDeletePreset").addEventListener("click", function ()
   });
 });
 
+document.getElementById("matchGraphToggle").addEventListener("change", function () {
+  if (!this.checked) return;
+
+  setStatus("Detecting…");
+  csInterface.evalScript("ik_detectCategory()", function (result) {
+    var envelope;
+    try {
+      envelope = JSON.parse(result);
+    } catch (e) {
+      envelope = { error: "Unexpected response: " + result };
+    }
+    if (envelope.error) {
+      setStatus(envelope.error, true);
+      return;
+    }
+    var detected;
+    try { detected = JSON.parse(envelope.message).category; } catch (e2) { detected = null; }
+    if (!detected) return;
+
+    store.activeCategory = detected;
+    renderCategoryGrid();
+    refreshPresetSelect();
+    renderParamRows();
+    setStatus("Detected: " + detected);
+  });
+});
+
 document.getElementById("btnApply").addEventListener("click", function () {
   var btn = this;
   btn.disabled = true;
@@ -354,7 +381,8 @@ document.getElementById("btnApply").addEventListener("click", function () {
   var args = JSON.stringify({
     category: store.activeCategory,
     presetPath: extPath + "/presets/DS1.ffx",
-    params: preset.params
+    params: preset.params,
+    matchGraph: document.getElementById("matchGraphToggle").checked
   });
 
   csInterface.evalScript("ik_applyImpact(" + JSON.stringify(args) + ")", function (result) {

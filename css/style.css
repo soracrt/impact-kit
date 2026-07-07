@@ -80,6 +80,30 @@ body {
   cursor: not-allowed;
 }
 
+/* ─── Match null's graph toggle ──────────────────────────────────────────── */
+
+.match-graph-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.match-graph-row input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+
+.match-graph-row span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
 /* ─── Category grid ─────────────────────────────────────────────────────── */
 
 .category-grid {
