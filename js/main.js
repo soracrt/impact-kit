@@ -207,9 +207,6 @@ for (var ci = 0; ci < categoryButtons.length; ci++) {
 
 document.getElementById("categoryCog").addEventListener("click", openPresetModal);
 document.getElementById("modalClose").addEventListener("click", closePresetModal);
-document.getElementById("presetModal").addEventListener("click", function (e) {
-  if (e.target.id === "presetModal") closePresetModal();
-});
 
 var modalRowButtons = document.querySelectorAll(".modal-row-btn");
 for (var mi = 0; mi < modalRowButtons.length; mi++) {
