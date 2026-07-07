@@ -46,12 +46,13 @@ function utf8ToBase64(str) {
 }
 
 function checkForUpdate() {
+  var extPath = csInterface.getSystemPath(SystemPath.EXTENSION);
   fetch("https://api.github.com/repos/" + UPDATE_REPO + "/commits/main")
     .then(function (res) { return res.ok ? res.json() : null; })
     .then(function (data) {
       if (!data || !data.sha) return;
       latestCommitSha = data.sha;
-      return evalScriptChecked("ik_readInstalledVersion()").then(function (envelope) {
+      return evalScriptChecked("ik_readInstalledVersion(" + JSON.stringify(extPath) + ")").then(function (envelope) {
         var installed = null;
         try { installed = JSON.parse(envelope.message || "{}"); } catch (e) { installed = {}; }
         if (installed.commit !== latestCommitSha) {
@@ -70,6 +71,7 @@ function installUpdate() {
   btn.disabled = true;
   text.textContent = "Updating…";
 
+  var extPath = csInterface.getSystemPath(SystemPath.EXTENSION);
   var sha = latestCommitSha;
   var fetches = UPDATE_FILES.map(function (relPath) {
     var url = "https://raw.githubusercontent.com/" + UPDATE_REPO + "/" + sha + "/" + relPath;
@@ -78,7 +80,7 @@ function installUpdate() {
       return res.text();
     }).then(function (content) {
       return evalScriptChecked(
-        "ik_writeInstalledFile(" + JSON.stringify(relPath) + "," + JSON.stringify(utf8ToBase64(content)) + ")"
+        "ik_writeInstalledFile(" + JSON.stringify(extPath + "/" + relPath) + "," + JSON.stringify(utf8ToBase64(content)) + ")"
       );
     }).catch(function (e) {
       throw new Error(relPath + ": " + e.message);
@@ -87,11 +89,11 @@ function installUpdate() {
 
   Promise.all(fetches)
     .then(function () {
-      return evalScriptChecked("ik_reloadHost()");
+      return evalScriptChecked("ik_reloadHost(" + JSON.stringify(extPath + "/jsx/main.jsx") + ")");
     })
     .then(function () {
       return evalScriptChecked(
-        "ik_writeInstalledVersion(" + JSON.stringify(JSON.stringify({ commit: sha, installedAt: new Date().toISOString() })) + ")"
+        "ik_writeInstalledVersion(" + JSON.stringify(extPath) + "," + JSON.stringify(JSON.stringify({ commit: sha, installedAt: new Date().toISOString() })) + ")"
       );
     })
     .then(function () {

@@ -54,17 +54,17 @@ function ik_writePresets(jsonStr) {
 }
 
 // ─── Self-update (writes into this extension's own installed folder) ───────
+//
+// All paths here are passed in explicitly from the JS side (which already
+// knows its own install path via csInterface.getSystemPath(SystemPath.
+// EXTENSION)) rather than derived from ExtendScript's $.fileName — that
+// turned out to be unreliable when the calling function isn't the
+// top-level script itself (evalScript-invoked calls saw $.fileName resolve
+// to something that made $.evalFile throw "File or folder does not exist").
 
-// This script's own directory is jsx/, so its parent is the extension root —
-// works out to the installed copy under %APPDATA%\Adobe\CEP\extensions\...
-// regardless of where AE actually launched it from.
-function ik_extensionRoot() {
-  return File($.fileName).parent.parent.fsName;
-}
-
-function ik_readInstalledVersion() {
+function ik_readInstalledVersion(extRoot) {
   try {
-    var file = new File(ik_extensionRoot() + "/version.json");
+    var file = new File(extRoot + "/version.json");
     if (!file.exists) return ok("");
     file.encoding = "UTF-8";
     file.open("r");
@@ -76,9 +76,9 @@ function ik_readInstalledVersion() {
   }
 }
 
-function ik_writeInstalledVersion(jsonStr) {
+function ik_writeInstalledVersion(extRoot, jsonStr) {
   try {
-    var file = new File(ik_extensionRoot() + "/version.json");
+    var file = new File(extRoot + "/version.json");
     file.encoding = "UTF-8";
     file.open("w");
     file.write(jsonStr);
@@ -117,29 +117,29 @@ function ik_base64Decode(input) {
 }
 
 // Overwrite a single file inside this extension's own installed folder.
-// relPath uses forward slashes, e.g. "js/main.js". base64Content is the
-// file's UTF-8 bytes, base64-encoded on the JS side. Used by the in-panel
-// updater to pull fresh files down from GitHub without a manual reinstall.
-function ik_writeInstalledFile(relPath, base64Content) {
+// absolutePath is the full target path. base64Content is the file's UTF-8
+// bytes, base64-encoded on the JS side. Used by the in-panel updater to
+// pull fresh files down from GitHub without a manual reinstall.
+function ik_writeInstalledFile(absolutePath, base64Content) {
   try {
     var bytes = ik_base64Decode(base64Content);
-    var target = new File(ik_extensionRoot() + "/" + relPath);
+    var target = new File(absolutePath);
     if (!target.parent.exists) target.parent.create();
     target.encoding = "BINARY";
     target.open("w");
     target.write(bytes);
     target.close();
-    return ok(relPath);
+    return ok(absolutePath);
   } catch (e) {
-    return err("Failed to write " + relPath + ": " + e.toString());
+    return err("Failed to write " + absolutePath + ": " + e.toString());
   }
 }
 
-// Re-evaluate this script file in the current ExtendScript engine, so a
-// freshly-written jsx/main.jsx takes effect without closing the panel.
-function ik_reloadHost() {
+// Re-evaluate jsx/main.jsx in the current ExtendScript engine, so a
+// freshly-written copy takes effect without closing the panel.
+function ik_reloadHost(jsxPath) {
   try {
-    $.evalFile(new File($.fileName));
+    $.evalFile(new File(jsxPath));
     return ok("Host reloaded.");
   } catch (e) {
     return err("Reload failed: " + e.toString());
