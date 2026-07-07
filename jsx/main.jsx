@@ -53,6 +53,70 @@ function ik_writePresets(jsonStr) {
   }
 }
 
+// ─── Self-update (writes into this extension's own installed folder) ───────
+
+// This script's own directory is jsx/, so its parent is the extension root —
+// works out to the installed copy under %APPDATA%\Adobe\CEP\extensions\...
+// regardless of where AE actually launched it from.
+function ik_extensionRoot() {
+  return File($.fileName).parent.parent.fsName;
+}
+
+function ik_readInstalledVersion() {
+  try {
+    var file = new File(ik_extensionRoot() + "/version.json");
+    if (!file.exists) return ok("");
+    file.encoding = "UTF-8";
+    file.open("r");
+    var contents = file.read();
+    file.close();
+    return ok(contents);
+  } catch (e) {
+    return err("Error reading version: " + e.toString());
+  }
+}
+
+function ik_writeInstalledVersion(jsonStr) {
+  try {
+    var file = new File(ik_extensionRoot() + "/version.json");
+    file.encoding = "UTF-8";
+    file.open("w");
+    file.write(jsonStr);
+    file.close();
+    return ok("Version saved.");
+  } catch (e) {
+    return err("Error writing version: " + e.toString());
+  }
+}
+
+// Overwrite a single file inside this extension's own installed folder.
+// relPath uses forward slashes, e.g. "js/main.js". Used by the in-panel
+// updater to pull fresh files down from GitHub without a manual reinstall.
+function ik_writeInstalledFile(relPath, content) {
+  try {
+    var target = new File(ik_extensionRoot() + "/" + relPath);
+    if (!target.parent.exists) target.parent.create();
+    target.encoding = "UTF-8";
+    target.open("w");
+    target.write(content);
+    target.close();
+    return ok(relPath);
+  } catch (e) {
+    return err("Failed to write " + relPath + ": " + e.toString());
+  }
+}
+
+// Re-evaluate this script file in the current ExtendScript engine, so a
+// freshly-written jsx/main.jsx takes effect without closing the panel.
+function ik_reloadHost() {
+  try {
+    $.evalFile(new File($.fileName));
+    return ok("Host reloaded.");
+  } catch (e) {
+    return err("Reload failed: " + e.toString());
+  }
+}
+
 // ─── Null-layer motion range detection ──────────────────────────────────────
 
 // Find which property on the null layer has keyframes and best represents

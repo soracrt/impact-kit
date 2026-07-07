@@ -1,6 +1,89 @@
 var csInterface = new CSInterface();
 var store = null;
 
+// ─── Self-update ────────────────────────────────────────────────────────────
+
+var UPDATE_REPO = "soracrt/impact-kit";
+var UPDATE_FILES = [
+  "index.html", "css/style.css",
+  "js/CSInterface.js", "js/main.js", "js/presets.js",
+  "jsx/main.jsx", "jsx/smoketest.jsx",
+  "CSXS/manifest.xml"
+];
+var latestCommitSha = null;
+
+function evalScriptAsync(script) {
+  return new Promise(function (resolve) {
+    csInterface.evalScript(script, resolve);
+  });
+}
+
+function parseEnvelope(result) {
+  try {
+    return JSON.parse(result);
+  } catch (e) {
+    return { error: "Unexpected response: " + result };
+  }
+}
+
+function checkForUpdate() {
+  fetch("https://api.github.com/repos/" + UPDATE_REPO + "/commits/main")
+    .then(function (res) { return res.ok ? res.json() : null; })
+    .then(function (data) {
+      if (!data || !data.sha) return;
+      latestCommitSha = data.sha;
+      return evalScriptAsync("ik_readInstalledVersion()").then(function (result) {
+        var envelope = parseEnvelope(result);
+        var installed = null;
+        try { installed = JSON.parse(envelope.message || "{}"); } catch (e) { installed = {}; }
+        if (installed.commit !== latestCommitSha) {
+          document.getElementById("updateBanner").classList.remove("hidden");
+        }
+      });
+    })
+    .catch(function () {
+      // No network / GitHub unreachable — fail silently, don't nag.
+    });
+}
+
+function installUpdate() {
+  var btn = document.getElementById("btnUpdate");
+  var text = document.getElementById("updateBannerText");
+  btn.disabled = true;
+  text.textContent = "Updating…";
+
+  var sha = latestCommitSha;
+  var fetches = UPDATE_FILES.map(function (relPath) {
+    var url = "https://raw.githubusercontent.com/" + UPDATE_REPO + "/" + sha + "/" + relPath;
+    return fetch(url).then(function (res) {
+      if (!res.ok) throw new Error("Failed to fetch " + relPath);
+      return res.text();
+    }).then(function (content) {
+      return evalScriptAsync(
+        "ik_writeInstalledFile(" + JSON.stringify(relPath) + "," + JSON.stringify(content) + ")"
+      );
+    });
+  });
+
+  Promise.all(fetches)
+    .then(function () {
+      return evalScriptAsync("ik_reloadHost()");
+    })
+    .then(function () {
+      return evalScriptAsync(
+        "ik_writeInstalledVersion(" + JSON.stringify(JSON.stringify({ commit: sha, installedAt: new Date().toISOString() })) + ")"
+      );
+    })
+    .then(function () {
+      text.textContent = "Updated — reloading…";
+      setTimeout(function () { window.location.reload(); }, 600);
+    })
+    .catch(function (e) {
+      btn.disabled = false;
+      text.textContent = "Update failed: " + e.message;
+    });
+}
+
 var DICE_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<rect x="3" y="3" width="18" height="18" rx="3"></rect>' +
@@ -134,7 +217,10 @@ document.addEventListener("DOMContentLoaded", function () {
     refreshPresetSelect();
     renderParamRows();
   });
+  checkForUpdate();
 });
+
+document.getElementById("btnUpdate").addEventListener("click", installUpdate);
 
 var categoryButtons = document.querySelectorAll(".category-btn");
 for (var ci = 0; ci < categoryButtons.length; ci++) {

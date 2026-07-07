@@ -49,6 +49,27 @@ function Box-Row([string]$text, [string]$fg = "Green") {
     Write-Host "$dv" -ForegroundColor DarkGreen
 }
 
+function Finalize-Install {
+    foreach ($f in @("install.bat","install.ps1")) {
+        $p = Join-Path $dest $f
+        if (Test-Path $p) { Remove-Item $p -Force }
+    }
+    $gitDir = Join-Path $dest ".git"
+    if (Test-Path $gitDir) { Remove-Item $gitDir -Recurse -Force }
+
+    $commit = $null
+    try {
+        Push-Location $PSScriptRoot
+        $commit = (git rev-parse HEAD 2>$null)
+        Pop-Location
+    } catch { $commit = $null }
+
+    if ($commit) {
+        $versionJson = "{`"commit`": `"$commit`", `"installedAt`": `"$(Get-Date -Format o)`"}"
+        Set-Content -Path (Join-Path $dest "version.json") -Value $versionJson -Encoding UTF8 -NoNewline
+    }
+}
+
 function Progress-Step([string]$label, [scriptblock]$action) {
     Write-Host ""
     $dots = "." * ([math]::Max(1, 28 - $label.Length))
@@ -126,10 +147,7 @@ if ($isUpdate) {
         if (-not (Test-Path $extDir)) { $null = New-Item -ItemType Directory -Path $extDir }
         if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
         Copy-Item $PSScriptRoot $dest -Recurse -Force
-        foreach ($f in @("install.bat","install.ps1")) {
-            $p = Join-Path $dest $f
-            if (Test-Path $p) { Remove-Item $p -Force }
-        }
+        Finalize-Install
     }
 
     Progress-Step "Verifying files" {
@@ -151,10 +169,7 @@ if ($isUpdate) {
     Progress-Step "Installing extension" {
         if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
         Copy-Item $PSScriptRoot $dest -Recurse -Force
-        foreach ($f in @("install.bat","install.ps1")) {
-            $p = Join-Path $dest $f
-            if (Test-Path $p) { Remove-Item $p -Force }
-        }
+        Finalize-Install
     }
 
 }

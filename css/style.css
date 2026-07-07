@@ -34,6 +34,52 @@ body {
   text-transform: uppercase;
 }
 
+/* ─── Update banner ──────────────────────────────────────────────────────── */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 170, 255, 0.35);
+  background: rgba(120, 170, 255, 0.08);
+}
+
+.update-banner.hidden { display: none; }
+
+#updateBannerText {
+  color: rgba(210, 225, 255, 0.9);
+  font-size: 11px;
+}
+
+.update-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 170, 255, 0.5);
+  background: rgba(120, 170, 255, 0.18);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: "Inter", sans-serif;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.update-btn:hover {
+  background: rgba(120, 170, 255, 0.3);
+  border-color: rgba(120, 170, 255, 0.7);
+}
+
+.update-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ─── Category grid ─────────────────────────────────────────────────────── */
 
 .category-grid {
