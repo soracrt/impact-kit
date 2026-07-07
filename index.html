@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Impact Kit</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="view">
+    <div class="header-row">
+      <span class="title">Impact Kit</span>
+    </div>
+
+    <div class="category-grid" id="categoryGrid">
+      <button class="category-btn" data-category="out">Out</button>
+      <button class="category-btn" data-category="in">In</button>
+      <button class="category-btn" data-category="mid">Mid</button>
+      <button class="category-btn" data-category="buildup">Build-Up</button>
+    </div>
+
+    <select id="presetSelect"></select>
+
+    <div id="paramRows" class="param-rows"></div>
+
+    <input type="text" id="presetName" placeholder="Preset name">
+    <div class="btn-row">
+      <button id="btnSavePreset" class="secondary-btn">Save As New</button>
+      <button id="btnDeletePreset" class="secondary-btn">Delete</button>
+    </div>
+
+    <button id="btnApply">Apply</button>
+    <div id="statusLine" class="status"></div>
+  </div>
+
+  <script src="js/CSInterface.js"></script>
+  <script src="js/presets.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
