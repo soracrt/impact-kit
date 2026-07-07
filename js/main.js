@@ -108,10 +108,20 @@ function installUpdate() {
       );
     })
     .then(function () {
-      text.textContent = hostReloaded
-        ? "Updated — reloading…"
-        : "Updated — reopen the panel to finish (host script needs a fresh session).";
-      setTimeout(function () { window.location.reload(); }, hostReloaded ? 600 : 2500);
+      if (hostReloaded) {
+        text.textContent = "Updated — reloading…";
+        setTimeout(function () { window.location.reload(); }, 600);
+        return;
+      }
+      // Host script couldn't hot-reload itself, so the ExtendScript engine
+      // is still running old code. Reopening the panel (closing this
+      // instance while requesting a new one) gets AE to spin up a fresh
+      // engine session that picks up the new jsx/main.jsx.
+      text.textContent = "Updated — reopening panel…";
+      setTimeout(function () {
+        csInterface.requestOpenExtension(csInterface.getExtensionID(), "");
+        csInterface.closeExtension();
+      }, 800);
     })
     .catch(function (e) {
       btn.disabled = false;
