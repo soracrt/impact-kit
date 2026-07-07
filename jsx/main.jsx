@@ -188,16 +188,18 @@ function findAnimatedProp(layer, propMode) {
 }
 
 // Find the time within [nullStart, nullEnd] where the null's own motion is
-// furthest from where it started — the shake's peak keyframe gets pinned
-// there, regardless of category, so the hit lands where the null actually
-// hits hardest instead of at an assumed start/middle/end.
+// moving fastest (frame-to-frame velocity, not distance from the start
+// value) — the shake's peak keyframe gets pinned there, since the hit
+// lands where the null actually has the most energy, not wherever its
+// position/scale/rotation value happens to be largest. A ball thrown from
+// the sky doesn't hit hardest at the highest point in its arc — it hits
+// hardest at its fastest point.
 function findPeakTime(prop, nullStart, nullEnd, frameLen) {
-  var rest = prop.valueAtTime(nullStart, false);
   var peakTime = nullStart, peakMag = -1;
 
   var t = nullStart;
-  while (t <= nullEnd) {
-    var m = magnitude(prop.valueAtTime(t, false), rest);
+  while (t <= nullEnd - frameLen) {
+    var m = magnitude(prop.valueAtTime(t + frameLen, false), prop.valueAtTime(t, false));
     if (m > peakMag) { peakMag = m; peakTime = t; }
     t += frameLen;
   }
