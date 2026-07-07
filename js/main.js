@@ -130,15 +130,15 @@ function installUpdate() {
 }
 
 var GEAR_SVG =
-  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<circle cx="12" cy="12" r="3"></circle>' +
   '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
   '</svg>';
 
 function setStatus(text, isError) {
-  var el = document.getElementById("statusLine");
-  el.textContent = text || "";
-  el.classList.toggle("status-error", !!isError);
+  var line = document.getElementById("statusLine");
+  document.getElementById("statusText").textContent = text || "";
+  line.classList.toggle("status-error", !!isError);
 }
 
 function renderCategoryGrid() {
@@ -165,6 +165,7 @@ document.addEventListener("DOMContentLoaded", function () {
     store = loadedStore;
     renderCategoryGrid();
     renderCogState();
+    setStatus("Ready to apply preset");
   });
   checkForUpdate();
 });
@@ -176,7 +177,7 @@ for (var ci = 0; ci < categoryButtons.length; ci++) {
   categoryButtons[ci].addEventListener("click", function () {
     store.activeCategory = this.dataset.category;
     renderCategoryGrid();
-    setStatus("");
+    setStatus("Ready to apply preset");
   });
 }
 
@@ -200,7 +201,7 @@ for (var gi2 = 0; gi2 < cogButtons.length; gi2++) {
       var picked;
       try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
       if (!picked) {
-        setStatus("");
+        setStatus("Ready to apply preset");
         return;
       }
 
