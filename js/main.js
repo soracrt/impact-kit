@@ -150,16 +150,13 @@ function renderCategoryGrid() {
 }
 
 function renderCogState() {
-  var cogs = document.querySelectorAll(".category-cog");
-  for (var i = 0; i < cogs.length; i++) {
-    var category = cogs[i].dataset.category;
-    cogs[i].classList.toggle("has-custom", !!store.customPresetPaths[category]);
-  }
+  var cog = document.getElementById("categoryCog");
+  cog.classList.toggle("has-custom", !!store.customPresetPaths[store.activeCategory]);
+  cog.title = "Import custom shake preset for " + store.activeCategory.toUpperCase();
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  var cogs = document.querySelectorAll(".category-cog");
-  for (var gi = 0; gi < cogs.length; gi++) cogs[gi].innerHTML = GEAR_SVG;
+  document.getElementById("categoryCog").innerHTML = GEAR_SVG;
 
   ImpactKitPresets.loadStore(csInterface, function (loadedStore) {
     store = loadedStore;
@@ -177,42 +174,40 @@ for (var ci = 0; ci < categoryButtons.length; ci++) {
   categoryButtons[ci].addEventListener("click", function () {
     store.activeCategory = this.dataset.category;
     renderCategoryGrid();
+    renderCogState();
     setStatus("Ready to apply preset");
   });
 }
 
-var cogButtons = document.querySelectorAll(".category-cog");
-for (var gi2 = 0; gi2 < cogButtons.length; gi2++) {
-  cogButtons[gi2].addEventListener("click", function () {
-    var category = this.dataset.category;
-    setStatus("Waiting for file selection…");
+document.getElementById("categoryCog").addEventListener("click", function () {
+  var category = store.activeCategory;
+  setStatus("Waiting for file selection…");
 
-    csInterface.evalScript("ik_pickPresetFile()", function (result) {
-      var envelope;
-      try {
-        envelope = JSON.parse(result);
-      } catch (e) {
-        envelope = { error: "Unexpected response: " + result };
-      }
-      if (envelope.error) {
-        setStatus(envelope.error, true);
-        return;
-      }
-      var picked;
-      try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
-      if (!picked) {
-        setStatus("Ready to apply preset");
-        return;
-      }
+  csInterface.evalScript("ik_pickPresetFile()", function (result) {
+    var envelope;
+    try {
+      envelope = JSON.parse(result);
+    } catch (e) {
+      envelope = { error: "Unexpected response: " + result };
+    }
+    if (envelope.error) {
+      setStatus(envelope.error, true);
+      return;
+    }
+    var picked;
+    try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
+    if (!picked) {
+      setStatus("Ready to apply preset");
+      return;
+    }
 
-      store.customPresetPaths[category] = picked;
-      ImpactKitPresets.saveStore(csInterface, store, function () {
-        renderCogState();
-        setStatus("Custom shake set for " + category + ".");
-      });
+    store.customPresetPaths[category] = picked;
+    ImpactKitPresets.saveStore(csInterface, store, function () {
+      renderCogState();
+      setStatus("Custom shake set for " + category + ".");
     });
   });
-}
+});
 
 document.getElementById("btnApply").addEventListener("click", function () {
   var btn = this;

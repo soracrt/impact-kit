@@ -36,6 +36,31 @@ body {
   text-transform: uppercase;
 }
 
+.header-cog {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.header-cog:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fff;
+}
+
+.header-cog.has-custom {
+  border-color: rgba(120, 170, 255, 0.6);
+  color: rgba(160, 195, 255, 0.9);
+}
+
 /* ─── Update banner ──────────────────────────────────────────────────────── */
 
 .update-banner {
@@ -109,9 +134,9 @@ body {
   background: transparent;
   color: rgba(255, 255, 255, 0.6);
   font-family: "Inter", sans-serif;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -126,33 +151,6 @@ body {
   border-color: rgba(255, 255, 255, 0.85);
   background: rgba(255, 255, 255, 0.04);
   color: #fff;
-}
-
-.category-cog {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 26px;
-  height: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background: rgba(0, 0, 0, 0.3);
-  color: rgba(255, 255, 255, 0.55);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.category-cog:hover {
-  border-color: rgba(255, 255, 255, 0.5);
-  color: #fff;
-}
-
-.category-cog.has-custom {
-  border-color: rgba(120, 170, 255, 0.6);
-  color: rgba(160, 195, 255, 0.9);
 }
 
 /* ─── Apply button ───────────────────────────────────────────────────────── */
