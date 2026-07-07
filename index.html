@@ -16,26 +16,23 @@
       <button id="btnUpdate" class="update-btn">Install Update</button>
     </div>
 
-    <label class="match-graph-row">
-      <input type="checkbox" id="matchGraphToggle">
-      <span>Match Null's Graph</span>
-    </label>
-
     <div class="category-grid" id="categoryGrid">
-      <button class="category-btn" data-category="out">Out</button>
-      <button class="category-btn" data-category="in">In</button>
-      <button class="category-btn" data-category="mid">Mid</button>
-      <button class="category-btn" data-category="buildup">Build-Up</button>
-    </div>
-
-    <select id="presetSelect"></select>
-
-    <div id="paramRows" class="param-rows"></div>
-
-    <input type="text" id="presetName" placeholder="Preset name">
-    <div class="btn-row">
-      <button id="btnSavePreset" class="secondary-btn">Save As New</button>
-      <button id="btnDeletePreset" class="secondary-btn">Delete</button>
+      <div class="category-cell">
+        <button class="category-btn" data-category="out">Out</button>
+        <button class="category-cog" data-category="out" title="Import your own shake preset"></button>
+      </div>
+      <div class="category-cell">
+        <button class="category-btn" data-category="in">In</button>
+        <button class="category-cog" data-category="in" title="Import your own shake preset"></button>
+      </div>
+      <div class="category-cell">
+        <button class="category-btn" data-category="mid">Mid</button>
+        <button class="category-cog" data-category="mid" title="Import your own shake preset"></button>
+      </div>
+      <div class="category-cell">
+        <button class="category-btn" data-category="buildup">Build-Up</button>
+        <button class="category-cog" data-category="buildup" title="Import your own shake preset"></button>
+      </div>
     </div>
 
     <button id="btnApply">Apply</button>

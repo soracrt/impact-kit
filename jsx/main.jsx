@@ -187,43 +187,6 @@ function findAnimatedProp(layer, propMode) {
   return best;
 }
 
-// Analyze the null's own motion curve to classify it as out/in/mid/buildup
-// and locate exactly where its peak displacement occurs, so a graph-matched
-// shake can be pinned to the null's actual motion instead of a template.
-function analyzeNullGraph(prop, nullStart, nullEnd, frameLen) {
-  var rest = prop.valueAtTime(nullStart, false);
-  var peakTime = nullStart, peakMag = 0;
-  var sumMag = 0, sampleCount = 0;
-
-  var t = nullStart;
-  while (t <= nullEnd) {
-    var m = magnitude(prop.valueAtTime(t, false), rest);
-    if (m > peakMag) { peakMag = m; peakTime = t; }
-    sumMag += m;
-    sampleCount++;
-    t += frameLen;
-  }
-
-  var avgMag   = sampleCount ? sumMag / sampleCount : 0;
-  var duration = nullEnd - nullStart;
-  var peakPct  = duration > 0 ? (peakTime - nullStart) / duration : 0;
-
-  var category;
-  if (peakMag > 0 && avgMag / peakMag > 0.7) {
-    // Displacement stays close to its peak for most of the range — a
-    // sustained shake, not a single hit.
-    category = "buildup";
-  } else if (peakPct <= 0.2) {
-    category = "out";
-  } else if (peakPct >= 0.8) {
-    category = "in";
-  } else {
-    category = "mid";
-  }
-
-  return { category: category, peakTime: peakTime, peakMag: peakMag };
-}
-
 // ─── Effect / property lookup ───────────────────────────────────────────────
 
 // Find the S_DissolveShake effect on an effects group by name/matchName
@@ -308,68 +271,20 @@ function findEnvelopeProps(effect) {
   return fallbackFound;
 }
 
-// Apply the shared shake params to the Sapphire effect's native properties.
-// amplitude/frequency are percentages (100 = baked default), seed is an
-// absolute integer. Wrap X/Y are always forced off — a reflected shake at
-// the frame edge reads as a glitch, not a camera hit. Returns
-// {applied, skipped} counts.
-function applyParams(effect, params) {
-  var applied = 0, skipped = 0;
-
-  function setScaled(propName, k) {
-    try {
-      var prop = findPropByName(effect, propName);
-      if (!prop) { skipped++; return; }
-      if (prop.numKeys === 0) {
-        prop.setValue(prop.value * k);
-      } else {
-        for (var i = 1; i <= prop.numKeys; i++) {
-          prop.setValueAtTime(prop.keyTime(i), prop.keyValue(i) * k);
-        }
-      }
-      applied++;
-    } catch (e) {
-      skipped++;
-    }
-  }
-
+// A reflected shake at the frame edge reads as a glitch, not a camera hit,
+// so Wrap X/Y are always forced off regardless of what the (built-in or
+// user-imported) preset shipped with. Amplitude/Frequency/Seed are left
+// exactly as the preset defines them — the user dials those in themselves
+// by building and importing their own .ffx preset.
+function forceWrapOff(effect) {
   function setMenu(propName, index) {
     try {
       var prop = findPropByName(effect, propName);
-      if (!prop) { skipped++; return; }
-      prop.setValue(index);
-      applied++;
-    } catch (e) {
-      skipped++;
-    }
+      if (prop) prop.setValue(index);
+    } catch (e) {}
   }
-
-  if (params.amplitude !== undefined && params.amplitude !== null) {
-    setScaled("Amplitude", params.amplitude / 100);
-  }
-
-  if (params.frequency !== undefined && params.frequency !== null) {
-    setScaled("Frequency", params.frequency / 100);
-  }
-
-  if (params.seed !== undefined && params.seed !== null) {
-    try {
-      var seedProp = findPropByName(effect, "Seed");
-      if (seedProp) {
-        seedProp.setValue(Math.round(params.seed));
-        applied++;
-      } else {
-        skipped++;
-      }
-    } catch (e) {
-      skipped++;
-    }
-  }
-
   setMenu("Wrap X", 1);
   setMenu("Wrap Y", 1);
-
-  return { applied: applied, skipped: skipped };
 }
 
 // ─── Category-specific intensity curves ─────────────────────────────────────
@@ -387,8 +302,9 @@ function propDims(prop) {
 
 // Rewrite a single envelope property's keyframes into the intensity curve
 // for the given category, spanning [nullStart, nullEnd]. Uses the property's
-// own post-applyParams key(1)/key(2) values as the 0%/100% reference points.
-function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen, peakTime) {
+// own key(1)/key(2) values (as set by the imported/default preset) as the
+// 0%/100% reference points.
+function ik_writeEnvelope(prop, category, nullStart, nullEnd, frameLen) {
   if (!prop || prop.numKeys < 2) return;
 
   var peakIdx  = Math.min(2, prop.numKeys);
@@ -411,48 +327,26 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen, 
     // Ease-out: leaves the peak almost immediately (low outgoing influence),
     // then decelerates gently into the floor (high incoming influence) —
     // a fast drop with a soft tail, not a symmetric S-curve.
-    var decay    = (params.decaySharpness !== undefined) ? params.decaySharpness : 70;
-    var outInflu = clampNum(30 - decay * 0.25, 2, 30);
-    var inInflu  = clampNum(60 + decay * 0.4, 60, 95);
     points = [
-      { t: nullStart, v: refPeak,  outI: outInflu, inI: outInflu },
-      { t: nullEnd,   v: refFloor, outI: inInflu,  inI: inInflu }
+      { t: nullStart, v: refPeak,  outI: 12, inI: 12 },
+      { t: nullEnd,   v: refFloor, outI: 88, inI: 88 }
     ];
   } else if (category === "in") {
     // Ease-in: holds near the floor at first (high outgoing influence),
     // then snaps up to the peak right at the end (low incoming influence) —
     // the mirror of "out".
-    var snap       = (params.snapAmount !== undefined) ? params.snapAmount : 70;
-    var startInflu = clampNum(40 + snap * 0.5, 40, 95);
-    var endInflu   = clampNum(30 - snap * 0.3, 2, 30);
     points = [
-      { t: nullStart, v: refFloor, outI: startInflu, inI: startInflu },
-      { t: nullEnd,   v: refPeak,  outI: endInflu,   inI: endInflu }
+      { t: nullStart, v: refFloor, outI: 75, inI: 75 },
+      { t: nullEnd,   v: refPeak,  outI: 9,  inI: 9  }
     ];
   } else if (category === "mid") {
-    var centerT, burstStart, burstEnd;
-
-    if (peakTime !== undefined && peakTime !== null) {
-      // Graph-matched: pin the peak to where the null's own motion actually
-      // peaked, spanning the null's full range rather than a cropped window.
-      centerT    = clampNum(peakTime, nullStart + frameLen, nullEnd - frameLen);
-      burstStart = nullStart;
-      burstEnd   = nullEnd;
-    } else {
-      var fullDur   = nullEnd - nullStart;
-      var centerPct = (params.centerPct !== undefined) ? params.centerPct : 50;
-      var widthPct  = (params.burstWidthPct !== undefined) ? params.burstWidthPct : 25;
-
-      centerT    = clampNum(nullStart + fullDur * (centerPct / 100), nullStart + frameLen, nullEnd - frameLen);
-      var half   = Math.max(frameLen, fullDur * (widthPct / 100) / 2);
-      burstStart = clampNum(centerT - half, nullStart, centerT - frameLen);
-      burstEnd   = clampNum(centerT + half, centerT + frameLen, nullEnd);
-    }
-
+    // Burst: floor at the null's start, peak at its midpoint, floor again
+    // at its end.
+    var centerT = clampNum(nullStart + (nullEnd - nullStart) / 2, nullStart + frameLen, nullEnd - frameLen);
     points = [
-      { t: burstStart, v: refFloor, outI: 30, inI: 30 },
-      { t: centerT,    v: refPeak,  outI: 30, inI: 30 },
-      { t: burstEnd,   v: refFloor, outI: 30, inI: 30 }
+      { t: nullStart, v: refFloor, outI: 30, inI: 30 },
+      { t: centerT,   v: refPeak,  outI: 30, inI: 30 },
+      { t: nullEnd,   v: refFloor, outI: 30, inI: 30 }
     ];
   } else {
     return;
@@ -470,36 +364,12 @@ function ik_writeEnvelope(prop, category, nullStart, nullEnd, params, frameLen, 
   }
 }
 
-// Preview-only: analyze the first selected null's motion and report which
-// category it would auto-classify as, so the UI can suggest it before Apply.
-function ik_detectCategory() {
+// Opens a native file picker for the user's own Sapphire shake preset
+// (.ffx). Returns { path: null } if the user cancels.
+function ik_pickPresetFile() {
   try {
-    var comp = app.project.activeItem;
-    if (!comp || !(comp instanceof CompItem)) {
-      return err("No active composition.");
-    }
-
-    var selected = comp.selectedLayers;
-    if (!selected || selected.length === 0) {
-      return err("Select at least one null layer.");
-    }
-
-    var nullLayer = null;
-    for (var i = 0; i < selected.length; i++) {
-      if (selected[i].nullLayer) { nullLayer = selected[i]; break; }
-    }
-    if (!nullLayer) return err("No null layers in selection.");
-
-    var animProp = findAnimatedProp(nullLayer, "auto");
-    if (!animProp) return err("Selected null has no keyframed motion (need ≥ 2 keyframes).");
-
-    var nullStart = animProp.keyTime(1);
-    var nullEnd   = animProp.keyTime(animProp.numKeys);
-    if (nullStart >= nullEnd) return err("Null's keyframes span zero time.");
-
-    var frameLen = 1 / comp.frameRate;
-    var analysis = analyzeNullGraph(animProp, nullStart, nullEnd, frameLen);
-    return ok(JSON.stringify({ category: analysis.category }));
+    var file = File.openDialog("Select a shake preset (.ffx)", "*.ffx");
+    return ok(JSON.stringify({ path: file ? file.fsName : null }));
   } catch (e) {
     return err("Error: " + e.toString());
   }
@@ -512,8 +382,6 @@ function ik_applyImpact(argsJson) {
     var args       = JSON.parse(argsJson);
     var category   = args.category;
     var presetPath = args.presetPath;
-    var params     = args.params || {};
-    var matchGraph = !!args.matchGraph;
 
     var presetFile = new File(presetPath);
     if (!presetFile.exists) {
@@ -554,11 +422,6 @@ function ik_applyImpact(argsJson) {
       var nullEndTime   = animProp.keyTime(animProp.numKeys);
       if (nullStartTime >= nullEndTime) continue;
 
-      var peakTime = null;
-      if (matchGraph) {
-        peakTime = analyzeNullGraph(animProp, nullStartTime, nullEndTime, frameLen).peakTime;
-      }
-
       // Create adjustment layer above the null layer
       var adjLayer = comp.layers.addSolid(
         [0, 0, 0], "Impact - " + nullLayer.name,
@@ -579,12 +442,12 @@ function ik_applyImpact(argsJson) {
       var effect = findEffectByName(adjLayer.Effects);
       if (!effect) { sapphireMissing++; continue; }
 
-      applyParams(effect, params);
+      forceWrapOff(effect);
 
       var envelopeProps = findEnvelopeProps(effect);
       for (var ep = 0; ep < envelopeProps.length; ep++) {
         try {
-          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, params, frameLen, peakTime);
+          ik_writeEnvelope(envelopeProps[ep], category, nullStartTime, nullEndTime, frameLen);
         } catch (eProp) {}
       }
 

@@ -129,25 +129,11 @@ function installUpdate() {
     });
 }
 
-var DICE_SVG =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-  '<rect x="3" y="3" width="18" height="18" rx="3"></rect>' +
-  '<circle cx="8" cy="8" r="1.2" fill="currentColor"></circle>' +
-  '<circle cx="16" cy="8" r="1.2" fill="currentColor"></circle>' +
-  '<circle cx="12" cy="12" r="1.2" fill="currentColor"></circle>' +
-  '<circle cx="8" cy="16" r="1.2" fill="currentColor"></circle>' +
-  '<circle cx="16" cy="16" r="1.2" fill="currentColor"></circle>' +
+var GEAR_SVG =
+  '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="3"></circle>' +
+  '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>' +
   '</svg>';
-
-function getActivePreset(category) {
-  category = category || store.activeCategory;
-  var name = store.activePresetByCategory[category];
-  var list = store.presets[category];
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].name === name) return list[i];
-  }
-  return list[0];
-}
 
 function setStatus(text, isError) {
   var el = document.getElementById("statusLine");
@@ -163,104 +149,22 @@ function renderCategoryGrid() {
   }
 }
 
-function refreshPresetSelect() {
-  var select = document.getElementById("presetSelect");
-  select.innerHTML = "";
-
-  var list = store.presets[store.activeCategory];
-  var activeName = store.activePresetByCategory[store.activeCategory];
-
-  var builtinGroup = document.createElement("optgroup");
-  builtinGroup.label = "Built-in";
-  var customGroup = document.createElement("optgroup");
-  customGroup.label = "Custom";
-
-  for (var i = 0; i < list.length; i++) {
-    var preset = list[i];
-    var option = document.createElement("option");
-    option.value = preset.name;
-    option.textContent = preset.name;
-    if (preset.name === activeName) option.selected = true;
-    (preset.builtin ? builtinGroup : customGroup).appendChild(option);
+function renderCogState() {
+  var cogs = document.querySelectorAll(".category-cog");
+  for (var i = 0; i < cogs.length; i++) {
+    var category = cogs[i].dataset.category;
+    cogs[i].classList.toggle("has-custom", !!store.customPresetPaths[category]);
   }
-
-  select.appendChild(builtinGroup);
-  if (customGroup.children.length > 0) select.appendChild(customGroup);
-
-  updateDeleteButtonState();
-}
-
-function updateDeleteButtonState() {
-  var btn = document.getElementById("btnDeletePreset");
-  var active = getActivePreset();
-  btn.disabled = !!(active && active.builtin);
-}
-
-function renderParamRows() {
-  var container = document.getElementById("paramRows");
-  container.innerHTML = "";
-
-  var defs = ImpactKitPresets.paramDefsFor(store.activeCategory);
-  var preset = getActivePreset();
-
-  defs.forEach(function (def) {
-    var row = document.createElement("div");
-    row.className = "row" + (def.key === "seed" ? " row-seed" : "");
-
-    var label = document.createElement("label");
-    label.setAttribute("for", "range-" + def.key);
-    label.textContent = def.label;
-
-    var range = document.createElement("input");
-    range.type = "range";
-    range.id = "range-" + def.key;
-    range.min = def.min;
-    range.max = def.max;
-    range.step = def.step;
-    var value = (preset.params[def.key] !== undefined) ? preset.params[def.key] : def.default;
-    range.value = value;
-
-    var readout = document.createElement("span");
-    readout.className = "value";
-    readout.id = "val-" + def.key;
-    readout.textContent = value;
-
-    range.addEventListener("input", function (key, out) {
-      return function () {
-        out.textContent = this.value;
-        getActivePreset().params[key] = Number(this.value);
-      };
-    }(def.key, readout));
-
-    row.appendChild(label);
-    row.appendChild(range);
-    row.appendChild(readout);
-
-    if (def.key === "seed") {
-      var dice = document.createElement("button");
-      dice.type = "button";
-      dice.className = "icon-btn";
-      dice.title = "Randomize seed";
-      dice.innerHTML = DICE_SVG;
-      dice.addEventListener("click", function () {
-        var seed = ImpactKitPresets.randomSeed();
-        range.value = seed;
-        readout.textContent = seed;
-        getActivePreset().params.seed = seed;
-      });
-      row.appendChild(dice);
-    }
-
-    container.appendChild(row);
-  });
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  var cogs = document.querySelectorAll(".category-cog");
+  for (var gi = 0; gi < cogs.length; gi++) cogs[gi].innerHTML = GEAR_SVG;
+
   ImpactKitPresets.loadStore(csInterface, function (loadedStore) {
     store = loadedStore;
     renderCategoryGrid();
-    refreshPresetSelect();
-    renderParamRows();
+    renderCogState();
   });
   checkForUpdate();
 });
@@ -272,104 +176,42 @@ for (var ci = 0; ci < categoryButtons.length; ci++) {
   categoryButtons[ci].addEventListener("click", function () {
     store.activeCategory = this.dataset.category;
     renderCategoryGrid();
-    refreshPresetSelect();
-    renderParamRows();
     setStatus("");
   });
 }
 
-document.getElementById("presetSelect").addEventListener("change", function () {
-  store.activePresetByCategory[store.activeCategory] = this.value;
-  ImpactKitPresets.saveStore(csInterface, store, function () {
-    updateDeleteButtonState();
-    renderParamRows();
+var cogButtons = document.querySelectorAll(".category-cog");
+for (var gi2 = 0; gi2 < cogButtons.length; gi2++) {
+  cogButtons[gi2].addEventListener("click", function () {
+    var category = this.dataset.category;
+    setStatus("Waiting for file selection…");
+
+    csInterface.evalScript("ik_pickPresetFile()", function (result) {
+      var envelope;
+      try {
+        envelope = JSON.parse(result);
+      } catch (e) {
+        envelope = { error: "Unexpected response: " + result };
+      }
+      if (envelope.error) {
+        setStatus(envelope.error, true);
+        return;
+      }
+      var picked;
+      try { picked = JSON.parse(envelope.message).path; } catch (e2) { picked = null; }
+      if (!picked) {
+        setStatus("");
+        return;
+      }
+
+      store.customPresetPaths[category] = picked;
+      ImpactKitPresets.saveStore(csInterface, store, function () {
+        renderCogState();
+        setStatus("Custom shake set for " + category + ".");
+      });
+    });
   });
-});
-
-document.getElementById("btnSavePreset").addEventListener("click", function () {
-  var nameInput = document.getElementById("presetName");
-  var name = nameInput.value.trim();
-  if (!name) name = "Custom";
-
-  var category = store.activeCategory;
-  var list = store.presets[category];
-
-  var params = {};
-  ImpactKitPresets.paramDefsFor(category).forEach(function (def) {
-    var range = document.getElementById("range-" + def.key);
-    params[def.key] = range ? Number(range.value) : def.default;
-  });
-
-  var existing = null;
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].name === name) { existing = list[i]; break; }
-  }
-
-  if (existing && existing.builtin) {
-    setStatus("Can't overwrite a built-in preset — pick a different name.", true);
-    return;
-  }
-
-  if (existing) {
-    existing.params = params;
-  } else {
-    list.push({ name: name, builtin: false, params: params });
-  }
-
-  store.activePresetByCategory[category] = name;
-  ImpactKitPresets.saveStore(csInterface, store, function () {
-    refreshPresetSelect();
-    nameInput.value = "";
-    setStatus("Preset saved.");
-  });
-});
-
-document.getElementById("btnDeletePreset").addEventListener("click", function () {
-  var category = store.activeCategory;
-  var active = getActivePreset();
-  if (!active || active.builtin) return;
-
-  var list = store.presets[category];
-  var remaining = [];
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].name !== active.name) remaining.push(list[i]);
-  }
-  store.presets[category] = remaining;
-  store.activePresetByCategory[category] = remaining.length ? remaining[0].name : null;
-
-  ImpactKitPresets.saveStore(csInterface, store, function () {
-    refreshPresetSelect();
-    renderParamRows();
-    setStatus("Preset deleted.");
-  });
-});
-
-document.getElementById("matchGraphToggle").addEventListener("change", function () {
-  if (!this.checked) return;
-
-  setStatus("Detecting…");
-  csInterface.evalScript("ik_detectCategory()", function (result) {
-    var envelope;
-    try {
-      envelope = JSON.parse(result);
-    } catch (e) {
-      envelope = { error: "Unexpected response: " + result };
-    }
-    if (envelope.error) {
-      setStatus(envelope.error, true);
-      return;
-    }
-    var detected;
-    try { detected = JSON.parse(envelope.message).category; } catch (e2) { detected = null; }
-    if (!detected) return;
-
-    store.activeCategory = detected;
-    renderCategoryGrid();
-    refreshPresetSelect();
-    renderParamRows();
-    setStatus("Detected: " + detected);
-  });
-});
+}
 
 document.getElementById("btnApply").addEventListener("click", function () {
   var btn = this;
@@ -377,12 +219,11 @@ document.getElementById("btnApply").addEventListener("click", function () {
   setStatus("Applying…");
 
   var extPath = csInterface.getSystemPath(SystemPath.EXTENSION);
-  var preset = getActivePreset();
+  var category = store.activeCategory;
+  var presetPath = store.customPresetPaths[category] || (extPath + "/presets/DS1.ffx");
   var args = JSON.stringify({
-    category: store.activeCategory,
-    presetPath: extPath + "/presets/DS1.ffx",
-    params: preset.params,
-    matchGraph: document.getElementById("matchGraphToggle").checked
+    category: category,
+    presetPath: presetPath
   });
 
   csInterface.evalScript("ik_applyImpact(" + JSON.stringify(args) + ")", function (result) {
